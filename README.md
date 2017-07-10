@@ -9,6 +9,7 @@
 先上client端，<br>
 server端还在清理，后续放上来，因为之前是自己使用，几天捏出来的玩意，东西有点乱，<br>
 这个工具我也许会继续维护、优化、还请大家能给予意见。<br>
+
 ![](https://raw.githubusercontent.com/wangwuli/autosvn/master/gihub/main.png)  <br>
 ![](https://raw.githubusercontent.com/wangwuli/autosvn/master/gihub/add.png)    <br>
 ![](https://raw.githubusercontent.com/wangwuli/autosvn/master/gihub/adduser.png) <br>
@@ -17,6 +18,8 @@ v0.2 loding..
 
 server，增加配置文件，使得修改配置文件，直接start使用，
 解决因Subversion/apache/mysql程序安装方式/安装路径不同导致的环境兼容性问题。
+今天把代码修改了一下，还没有进行运行尝试。
+
 +++++++
 
 end，ths
