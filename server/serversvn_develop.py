@@ -8,7 +8,7 @@ from signal import SIGTERM
 import ConfigParser
   
 class Daemon:  
-  def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):  
+  def __init__(self, pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/tmp/error.log'):  
       #需要获取调试信息，改为stdin='/dev/stdin', stdout='/dev/stdout', stderr='/dev/stderr'，以root身份运行。  
     self.stdin = stdin  
     self.stdout = stdout  
@@ -119,12 +119,12 @@ class Daemon:
 class MyDaemon(Daemon):  
 	def _run(self):  
 
-		master = {}
-		masterpasswd = {}
+		self.master = {}
+		self.masterpasswd = {}
 
-		conn = MySQLdb.connect(host = configure[mysql][host], user = configure[mysql][user], passwd = configure[mysql][passwd], db = configure[mysql][db])
+		conn = MySQLdb.connect(host = configure['mysql']['host'], user = configure['mysql']['user'], passwd = configure['mysql']['passwd'], db = configure['mysql']['db'])
 		cursor = conn.cursor()
-		cursor.execute("SELECT * FROM `%s`.`%s`;" %(configure[mysql][db],configure[mysql][table]))
+		cursor.execute("SELECT * FROM `%s`.`%s`;" %(configure['mysql']['db'],configure['mysql']['table']))
 		alluser = cursor.fetchall()
 		conn.commit()
 		cursor.close ()
@@ -132,26 +132,27 @@ class MyDaemon(Daemon):
 
 		for oneuser in alluser:
 			if oneuser[4] == '1':        #如果权限为1 允许创建项目
-				master[oneuser[0]] = oneuser[2]        
+				self.master[oneuser[0]] = oneuser[2]        
 			
 			if oneuser[3] or oneuser[3] != None:       #如果没有设置密码 默认为51job
-				masterpasswd[oneuser[2]] = oneuser[3]
+				self.masterpasswd[oneuser[2]] = oneuser[3]
 			else:
-				masterpasswd[oneuser[2]] = configure[server][default_passwd]
+				self.masterpasswd[oneuser[2]] = configure['server']['default_passwd']
 
-
-		host = configure[server][host_listen]
-		port = configure[server][server_port]
+		
+		host = configure['server']['host_listen']
+		port = int(configure['server']['server_port'])
+		print type(port)
 		server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		server.bind((host,port))
-		server.listen(1)
-	
+		server.listen(5)
+		print host,port
+		
 		while 1:
 			client,addr = server.accept()
 			print ('Connected by:',addr)
 			client_handler = threading.Thread(target=self.handle_client,args=(client,))
 			client_handler.start()
-	
 	
 	def swappass(self):        #生成密码
 		num = 12
@@ -172,14 +173,14 @@ class MyDaemon(Daemon):
 				getmessage=eval(getmessage)       #将收到的字符串，转回为字典
 				print (getmessage)
 				try:
-					getmessage.get(master[getmessage['clientip']])               #判断是否有权限
+					getmessage.get(self.master[getmessage['clientip']])               #判断是否有权限
 				except KeyError:
 					client_socket.send("you 'meiyou' permission !".encode())
 					break
 					
-				svn_project_path = configure[path][subversion_path] + getmessage['project']
+				svn_project_path = configure['path']['subversion_path'] + getmessage['project']
 				
-				apache_project = configure[path][apache_svn_project_path] + getmessage['project']
+				apache_project = configure['path']['apache_project_path'] + getmessage['project']
 				if getmessage.get('svn'):          #######使用svn部署项目#####
 					
 					
@@ -188,61 +189,61 @@ class MyDaemon(Daemon):
 						break
 	 
 					#创建项目
-					os.system('%ssvnadmin create %s' % (configure[path][subversion_bin],svn_project_path))
+					os.system('%ssvnadmin create %s' % (configure['path']['subversion_bin'],svn_project_path))
 	
 					#权限配置
 					try:
 						authz=open('%s/conf/authz' % svn_project_path,'a')
-						authz.write('[%s:/]\n%s=rw\nsvn=rw\n' % (getmessage['project'],master[getmessage['clientip']]))
+						authz.write('[%s:/]\n%s=rw\nsvn=rw\n' % (getmessage['project'],self.master[getmessage['clientip']]))
 						authz.close()
 					except IOError:
 						client_socket.send("error : project name NONONO...".encode())
 						client_socket.close()
 	
 					#密码配置
-					os.system('%shtpasswd -cb %s/conf/passwd %s %s' %(configure[path][apache_bin],svn_project_path,master[getmessage['clientip']],masterpasswd[master[getmessage['clientip']]]))
-					os.system('%shtpasswd -b %s/conf/passwd %s %s' %(configure[path][apache_bin],svn_project_path,configure[subversion][postcommit_name],configure[subversion][postcommit_pass]))
+					os.system('%shtpasswd -cb %s/conf/passwd %s %s' %(configure['path']['apache_bin'],svn_project_path,self.master[getmessage['clientip']],self.masterpasswd[self.master[getmessage['clientip']]]))
+					os.system('%shtpasswd -b %s/conf/passwd %s %s' %(configure['path']['apache_bin'],svn_project_path,configure['subversion']['postcommit_name'],configure['subversion']['postcommit_pass']))
 	
 					#配置文件配置
 					svnserve_conf = svn_project_path + '/conf/svnserve.conf'
+					print svn_project_path
 					
 					os.system("sed -i 's/# anon-access = read/anon-access = none/g' %s" %svnserve_conf)
 					os.system("sed -i 's/# auth-access = write/auth-access = write/g' %s" %svnserve_conf)
 					os.system("sed -i 's/# password-db = passwd/password-db = passwd/g' %s" %svnserve_conf)
 					os.system("sed -i 's/# authz-db = authz/authz-db = authz/g' %s" %svnserve_conf)
-					os.system("sed -i 's/# realm = My First Repository/realm = %s/g' %s" % (svn_project_path,svnserve_conf)
+					# os.system("sed -i 's/# realm = My First Repository/realm = %s/g' %s" % (svn_project_path,svnserve_conf))
+					os.system("sed -i 's/# realm = My First Repository/realm = %s/g' %s" % (svn_project_path.replace('/','\/'),svnserve_conf))
 	
 					#配置钩子
-					
-					
-					hooks=open('%s/hooks/post-commit' % svn_project_path,'a')
-					hooks.write('#!/bin/sh\nexport LANG=zh_CN.UTF-8\n%ssvn update %s --username svn --password abc123 >> %s/hooks/codedeploy.log\n' % (apache_project,svn_project_path))
+					hooks=open('%s/hooks/post-commit' %svn_project_path,'a')
+					hooks.write('#!/bin/sh\nexport LANG=zh_CN.UTF-8\n%ssvn update %s --username %s --password %s >> %s/hooks/codedeploy.log\n' % (configure['path']['subversion_bin'],apache_project,configure['subversion']['postcommit_name'],configure['subversion']['postcommit_pass'],svn_project_path))
 					hooks.close()
 					os.system('chmod u+x %s/hooks/post-commit' %svn_project_path)
 	
 					#apache配置
 					os.system('mkdir %s' %apache_project)
-					apachesvn=open(configure[path][apache_svnconf_path],'a')
-					apachesvn.write('<Location /%ssvn>\nDAV svn\nSVNPath %s/\nAuthType Basic\nAuthName "Subversion repos"\nAuthUserFile %s/conf/passwd\nRequire valid-user\n</Location>\n\n\n' %(getmessage['project'],configure[path][subversion_path],configure[path][subversion_path]))
+					apachesvn=open(configure['path']['apache_svnconf_path'],'a')
+					apachesvn.write('<Location /%ssvn>\nDAV svn\nSVNPath %s\nAuthType Basic\nAuthName "Subversion repos"\nAuthUserFile %s/conf/passwd\nRequire valid-user\n</Location>\n\n\n' %(getmessage['project'],svn_project_path,svn_project_path))
 					apachesvn.close()
 					
 					os.system('service httpd reload')
-					#configure[path][subversion_path]/httpd -k graceful
+					#configure['path']['subversion_path']/httpd -k graceful
 					
 					#钩子启动
-					os.system('%ssvn co http://%s/%ssvn  %s  --username=%s --password=%s' %(configure[path][subversion_path,getmessage['project'],configure[server][apache_listen_ip],apache_project,configure[subversion][postcommit_name],configure[subversion][postcommit_pass]))
+					os.system('%ssvn co http://%s/%ssvn  %s  --username=%s --password=%s' %(configure['path']['subversion_bin'],configure['server']['apache_listen_ip'],getmessage['project'],apache_project,configure['subversion']['postcommit_name'],configure['subversion']['postcommit_pass']))
 	
 					#权限配置
-					apache_user = configure[path][apache_user]
+					apache_user = configure['path']['apache_user']
 					os.system('chown -R  %s.%s %s' %(apache_user,apache_user,svn_project_path))
 					os.system('chown -R  %s.%s %s/.svn' %(apache_user,apache_user,apache_project))
 					os.system('chown -R  %s.%s %s' %(apache_user,apache_user,apache_project))
 					
-					succeed='succeed\nsvn addr:http://%s/%ssvn\nsvn user:%s\nproject look addr:http://%s/%s' % (configure[server][apache_listen_ip],getmessage['project'],master[getmessage['clientip']],configure[server][apache_listen_ip],getmessage['project'])
+					succeed='succeed\nsvn addr:http://%s/%ssvn\nsvn user:%s\nproject look addr:http://%s/%s' % (configure['server']['apache_listen_ip'],getmessage['project'],self.master[getmessage['clientip']],configure['server']['apache_listen_ip'],getmessage['project'])
 	
 				if getmessage.get('mysql'):             ##是否需求mysql##
 					mysqlpass=self.swappass()
-					conn = MySQLdb.connect(host = configure[mysql][host], user = configure[mysql][user], passwd = configure[mysql][passwd], db = configure[mysql][db])
+					conn = MySQLdb.connect(host = configure['mysql']['host'], user = configure['mysql']['user'], passwd = configure['mysql']['passwd'], db = configure['mysql']['db'])
 					cursor = conn.cursor()
 					try:
 						cursor.execute("create database %s" % getmessage['project'])
@@ -259,17 +260,17 @@ class MyDaemon(Daemon):
 				if getmessage.get('samba'):                   ##是否需求samba##
    
 					if os.path.exists(apache_project):         #判断项目是否已经存在	 
-						sambaN=open('%ssmb.conf' %configure[path][samba_path],'r')
+						sambaN=open('%ssmb.conf' %configure['path']['samba_path'],'r')
 						if re.search('\[%s\]' %getmessage['project'] ,sambaN.read(20480)):
 							sambaN.close()
 							client_socket.send("samba: project is exist !".encode())
 							break      
 						else:
 							sambaN.close()
-							sambaC=open('%ssmb.conf' %configure[path][samba_path],'a')
+							sambaC=open('%ssmb.conf' %configure['path']['samba_path'],'a')
 							sambaC.write('\n[%s]\npath = %s\nbrowseable = yes\npublic = yes\nwritable = yes\nguest ok = yes\nhosts allow =%s\n' % (getmessage['project'], gapache_project, getmessage['clientip']))
 							sambaC.close()
-							succeed=succeed + "samba: \\\\%s\\%s\\\n" % (configure[server][apache_listen_ip],getmessage['project'])
+							succeed=succeed + "samba: \\\\%s\\%s\\\n" % (configure['server']['apache_listen_ip'],getmessage['project'])
 					else:
 						client_socket.send("project not exist !".encode())
 						break
@@ -277,7 +278,7 @@ class MyDaemon(Daemon):
 	
 				if getmessage.get('svnrw') or getmessage.get('svnr'):    ######使用svnrw与svnr为添加用户功能判断######
 					try:
-						getmessage.get(master[getmessage['clientip']])               #判断是否有权限
+						getmessage.get(self.master[getmessage['clientip']])               #判断是否有权限
 					except KeyError:
 						client_socket.send("you 'meiyou' permission !".encode())
 						break
@@ -294,9 +295,9 @@ class MyDaemon(Daemon):
 	
 					#密码配置
 					try:
-						os.system('%shtpasswd -b %s/conf/passwd %s %s' %(configure[path][apache_bin],svn_project_path,getmessage['username'],masterpasswd[getmessage['username']]))
+						os.system('%shtpasswd -b %s/conf/passwd %s %s' %(configure['path']['apache_bin'],svn_project_path,getmessage['username'],self.masterpasswd[getmessage['username']]))
 					except KeyError:
-						client_socket.send("user not master !".encode())
+						client_socket.send("user not self.master !".encode())
 						break
 	 
 					#添加用户
@@ -319,14 +320,14 @@ class MyDaemon(Daemon):
 		
 
 class configuration():		   #读取配置文件
-	def get_dict(head):
+	def get_dict(self,head):
 		dictA = {}
 		for servername in head:
 			dictA[servername[0]] = servername[1]
 		return dictA
 
 			
-	def readconffile():
+	def readconffile(self):
 		conff = ConfigParser.ConfigParser() 
 
 		conff.read("./is.conf") 
@@ -337,15 +338,14 @@ class configuration():		   #读取配置文件
 		for head in secs:
 			server = conff.items(head) 
 			
-			server_all[head] = get_dict(server)
+			server_all[head] = self.get_dict(server)
 		return  server_all
 	
   
 if __name__ == '__main__':    #启动
 	global configure
 	configure = configuration().readconffile()
-	
-	daemon = MyDaemon(configure[server][pidfile], stdout = configure[server][log])
+	daemon = MyDaemon(configure['server']['pidfile'], stdout = configure['server']['log'])
 	
 	if len(sys.argv) == 2:  
 		if 'start' == sys.argv[1]:  
