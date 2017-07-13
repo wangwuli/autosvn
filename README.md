@@ -1,6 +1,8 @@
 # autosvn 说明
 ===
-基于Subversion/apache/mysql的svn自动部署工具,使用前提是，基于apache的svn服务已经部署好，samba服务使用的是基于IP控制访问权限。
+基于Subversion/apache/mysql的svn自动部署工具,<br>
+使用前提是，apache的svn服务已经部署好，<br>
+samba服务使用的是IP控制访问权限。
 开发环境为centos7.3。
 
 
@@ -16,9 +18,10 @@ v0.2 loding..
 
 server，增加配置文件，使得修改配置文件，直接start使用，<br>
 解决因Subversion/apache/mysql程序安装方式/安装路径不同导致的环境兼容性问题。<br><br>
+今天跑了一下，应该差不多了。<br>
 
 ### 《NEW》
-今天跑了一下，应该差不多了，下一步有时间的话，可能会找或者写一些API去shell化，以及增加前提make文件。
+下一步有时间的话，可能会找或者写一些API去shell化，以及增加前提环境make文件。
 
 +++++++
 
